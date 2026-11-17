@@ -260,6 +260,69 @@ extern "C" {
 	#define	AVR8_MAX_BREAKS       (4)
 #endif
 
+/**
+ * Maximum number of (write) watchpoints which can be active at the same time.
+ * Watchpoints are only supported with RAM breakpoints (AVR8_BREAKPOINT_MODE == 1).
+ * They can be set either from GDB ("watch var") or from the debugged program
+ * by calling debug_watch().
+ * Each watchpoint needs (3 + AVR8_WATCH_MAXLEN) bytes of RAM.
+ * Set to 0 to remove the watchpoint support completely (saves flash and RAM).
+ */
+#ifndef AVR8_MAX_WATCHES
+	#define AVR8_MAX_WATCHES      (2)
+#endif
+
+/**
+ * Maximum size in bytes of the memory area (variable) watched by one watchpoint.
+ */
+#ifndef AVR8_WATCH_MAXLEN
+	#define AVR8_WATCH_MAXLEN     (4)
+#endif
+
+/**
+ * Local watchpoints - functions debug_watch() and debug_unwatch() which allow
+ * the debugged program to set watchpoints itself.
+ * 1 - functions are available
+ * 0 - functions are not compiled (saves flash); watchpoints can still be set from GDB.
+ *     The dbg_watch()/dbg_unwatch() macros in avr_debugger.h then expand to nothing.
+ */
+#ifndef AVR8_LOCAL_WATCH_SUPPORT
+	#define AVR8_LOCAL_WATCH_SUPPORT  (1)
+#endif
+
+/**
+ * Stand-alone watchpoint mode - debugging without GDB.
+ * 1 - The stub does not use the UART at all (the program can use Serial itself)
+ *     and does not communicate with GDB. Only local watchpoints work:
+ *     when a watchpoint triggers, the stub records the watchpoint, the PC and
+ *     a backtrace and lets the program continue. The program can query the
+ *     last hit with debug_watch_get_hit().
+ *     Requires AVR8_BREAKPOINT_MODE 1, AVR8_LOAD_SUPPORT 0, AVR8_MAX_WATCHES > 0
+ *     and AVR8_LOCAL_WATCH_SUPPORT 1. The pin of the external interrupt
+ *     selected by AVR8_SWINT_SOURCE is still used by the stub.
+ *     breakpoint() and debug_message() do nothing in this mode.
+ * 0 - Normal mode: debugging with GDB over UART.
+ */
+#ifndef AVR8_STANDALONE_WATCH
+	#define AVR8_STANDALONE_WATCH  (0)
+#endif
+
+/**
+ * Stand-alone mode only: maximum number of return addresses recorded in the
+ * backtrace when a watchpoint triggers.
+ * Each entry needs 2 bytes of RAM (4 bytes on MCUs with more than 64 KB flash).
+ */
+#ifndef AVR8_BACKTRACE_DEPTH
+	#define AVR8_BACKTRACE_DEPTH  (8)
+#endif
+
+/* Derived: 1 if watchpoints are supported in the current configuration. Do not change. */
+#if (AVR8_BREAKPOINT_MODE == 1) && (AVR8_MAX_WATCHES > 0)
+	#define AVR8_WATCH_SUPPORT    (1)
+#else
+	#define AVR8_WATCH_SUPPORT    (0)
+#endif
+
 
 /**
  * Define this to enable some global variables to make it easier to debug this stub.
@@ -291,6 +354,104 @@ void breakpoint(void);
  * it displays the messages in console.
  */
 void debug_message(const char* msg);
+
+#if (AVR8_LOCAL_WATCH_SUPPORT == 1)
+/**
+ * Set a write watchpoint from within the debugged program.
+ * This has the same effect as the GDB command "watch <variable>": after every
+ * instruction the stub compares the watched memory with its last known value;
+ * if the value has changed, the program is stopped (SIGTRAP) and control is
+ * passed to GDB. The program stops at the instruction following the write.
+ * Notes:
+ * - Only available with RAM breakpoints (AVR8_BREAKPOINT_MODE == 1); in the
+ *   other modes the function does nothing and returns 0.
+ * - Only changes of the value are detected; writing the same value again
+ *   does not trigger the watchpoint.
+ * - While a watchpoint is active the program runs slowly (as with RAM breakpoints).
+ * - debug_init() must have been called before.
+ * - GDB does not know about watchpoints set by this function, so it reports
+ *   the stop as a plain SIGTRAP.
+ * - In stand-alone mode (AVR8_STANDALONE_WATCH == 1) the program is not stopped;
+ *   the hit is recorded and can be read with debug_watch_get_hit().
+ *
+ * @param addr  RAM address of the memory to watch, typically &variable.
+ * @param len   Number of bytes to watch starting at addr, typically
+ *              sizeof(variable); 1 to AVR8_WATCH_MAXLEN.
+ * @return      1 if the watchpoint was set (or an existing watchpoint on the
+ *              same address was updated); 0 if no free watchpoint slot is
+ *              available, the parameters are invalid, debug_init() was not
+ *              called or watchpoints are not supported in this mode.
+ */
+uint8_t debug_watch(const volatile void* addr, uint8_t len);
+
+/**
+ * Remove a watchpoint set by debug_watch() or by GDB.
+ *
+ * @param addr  RAM address the watchpoint was set on (the same value as
+ *              passed to debug_watch()).
+ * @return      1 if a watchpoint on this address was found and removed;
+ *              0 if no such watchpoint exists, debug_init() was not called
+ *              or watchpoints are not supported in this mode.
+ */
+uint8_t debug_unwatch(const volatile void* addr);
+#endif	/* AVR8_LOCAL_WATCH_SUPPORT */
+
+#if (AVR8_STANDALONE_WATCH == 1)
+/**
+ * Type for code (flash) addresses in the backtrace. These are BYTE addresses
+ * as used by avr-objdump, avr-addr2line and the .map file.
+ */
+#if (FLASHEND > 0xFFFF)
+	typedef uint32_t debug_code_addr_t;
+#else
+	typedef uint16_t debug_code_addr_t;
+#endif
+
+/**
+ * Information about the last watchpoint hit in stand-alone mode.
+ * Filled by debug_watch_get_hit().
+ */
+typedef struct
+{
+	/** RAM address of the watchpoint which triggered (as passed to debug_watch()). */
+	uint16_t watch_addr;
+	/** Number of watched bytes. */
+	uint8_t len;
+	/** Value of the watched memory before the change (first len bytes valid). */
+	uint8_t old_value[AVR8_WATCH_MAXLEN];
+	/** Value of the watched memory after the change (first len bytes valid). */
+	uint8_t new_value[AVR8_WATCH_MAXLEN];
+	/** Byte address of the instruction FOLLOWING the one which changed the value.
+	 * The writing instruction is the one just before it. */
+	debug_code_addr_t pc;
+	/** Stack pointer of the program when the change was detected. */
+	uint16_t sp;
+	/** 1 if the value was changed by an interrupt handler of the program.
+	 * pc and backtrace then show the main program code which was interrupted,
+	 * not the ISR itself. 0 if changed by the code at pc. */
+	uint8_t in_isr;
+	/** Number of valid entries in backtrace[]. */
+	uint8_t depth;
+	/** Return addresses found on the stack (byte addresses), innermost caller
+	 * first. Each address points just after a call instruction; resolve it
+	 * with: avr-addr2line -f -e <program.elf> <address>
+	 * The backtrace is found by a heuristic stack scan, see avr8-stub.c. */
+	debug_code_addr_t backtrace[AVR8_BACKTRACE_DEPTH];
+} debug_watch_hit_t;
+
+/**
+ * Stand-alone mode: query whether a watchpoint has triggered and get the
+ * information about the last hit. Calling this function resets the hit counter.
+ * Only the last hit is stored; earlier hits are overwritten.
+ *
+ * @param hit   Pointer to a structure which receives the data of the last hit.
+ *              It is written only if the return value is not 0. May be NULL
+ *              if only the hit counter is of interest.
+ * @return      Number of watchpoint hits since the previous call
+ *              (saturates at 255); 0 if no watchpoint has triggered.
+ */
+uint8_t debug_watch_get_hit(debug_watch_hit_t* hit);
+#endif	/* AVR8_STANDALONE_WATCH */
 
 
 

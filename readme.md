@@ -10,6 +10,14 @@ To use this debugger as Arduino library, go to the arduino/library sub-folder. T
 This is debugger for Arduino based on GNU Debugger (GDB). The debugger is implemented using GDB stub mechanism. This means a piece of code (stub) is added to your Arduino program. This code then communicates with the GDB debugger. No external programmer or modification of the Arduino board is required. Eclipse can be used as a graphical frontend for debugging. For more information and tutorial please see the manual in /doc directory.
 
 ## Revision History
+**November 2026**
++ Added write watchpoints (RAM breakpoint mode, AVR8_BREAKPOINT_MODE = 1 only):
+  + GDB `watch` command is supported (Z2/z2 packets); the stop reply reports the triggering watchpoint (`watch:<addr>`).
+  + New functions `debug_watch()` / `debug_unwatch()` (macros `dbg_watch()` / `dbg_unwatch()`) to set watchpoints from the program.
+  + New stand-alone mode (AVR8\_STANDALONE\_WATCH = 1) without GDB and without using the UART: watchpoint hits are recorded with a backtrace and can be queried with `debug_watch_get_hit()`.
+  + New options AVR8\_MAX\_WATCHES, AVR8\_WATCH\_MAXLEN, AVR8\_LOCAL\_WATCH\_SUPPORT, AVR8\_STANDALONE\_WATCH and AVR8\_BACKTRACE\_DEPTH in avr8-stub.h.
+  + See [doc/watchpoints.md](doc/watchpoints.md) and the example examples/standalone_watch.
+
 **March 2022**
 + Added support for other UART than the default UART0 for Arduino Mega. (see AVR8_UART_NUMBER in avr8-stub.h).
  Now it is possible to use any one of the available UARTs to communicate with GDB and the UART0 can be used by Arduino Serial.
