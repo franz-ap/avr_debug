@@ -614,9 +614,9 @@ void watchdogConfig(uint8_t x) {
  */
 struct gdb_watch
 {
-	uint16_t addr;                   /* RAM address of the watched memory; 0 = slot is free */
-	uint8_t len;                     /* Number of bytes watched: 1 .. AVR8_WATCH_MAXLEN     */
-	uint8_t old[AVR8_WATCH_MAXLEN];  /* Last known value of the watched memory              */
+	uint16_t addr;                    /* RAM address of the watched memory; 0 = slot is free */
+	uint8_t  len;                     /* Number of bytes watched: 1 .. AVR8_WATCH_MAXLEN     */
+	uint8_t  old[AVR8_WATCH_MAXLEN];  /* Last known value of the watched memory              */
 };
 
 /* True if at least one watchpoint is set */
@@ -651,10 +651,10 @@ struct gdb_context
 
 #if AVR8_LOC_WATCH_IS_AVAIL
 	struct gdb_watch watches[AVR8_MAX_WATCHES];	/* Watchpoints */
-	uint8_t watch_cnt;							/* number of watchpoints set */
+	uint8_t  watch_cnt;							/* Number of watchpoints set */
 #if ! AVR8_STANDALONE_WATCH
-	uint16_t watch_hit;		/* RAM address of the watchpoint which stopped the program, 0 = none;
-							   reported to GDB by gdb_send_state() */
+    uint16_t watch_hit;  /* RAM address of the watchpoint which stopped the program, 0 = none; */
+                         /* reported to GDB by gdb_send_state()                                */
 #endif
 #endif
 #endif
@@ -673,7 +673,7 @@ struct gdb_context
 static volatile uint8_t gdb_watch_hit_cnt;
 /* Data of the last watchpoint hit, read by debug_watch_get_hit() */
 static debug_watch_hit_t gdb_watch_last_hit;
-/* 1 while the stub checks for changes made by an interrupt handler of the program */
+/* Contains 1 while the stub checks for changes made by an interrupt handler of the program */
 static uint8_t gdb_watch_in_isr;
 #endif
 
@@ -989,10 +989,10 @@ void debug_init(void)
 	/* Init watchpoints */
 	memset(gdb_ctx->watches, 0, sizeof(gdb_ctx->watches));
 	gdb_ctx->watch_cnt = 0;
-#if ! AVR8_STANDALONE_WATCH
-	gdb_ctx->watch_hit = 0;
-#else
+#if AVR8_STANDALONE_WATCH
 	gdb_watch_hit_cnt = 0;
+#else
+	gdb_ctx->watch_hit = 0;
 #endif
 #endif
 
@@ -1658,7 +1658,7 @@ static void gdb_insert_remove_breakpoint(const uint8_t *buff)
  *              invalid or no free watchpoint slot is available.
  */
 __attribute__((optimize("-Os")))
-static bool_t gdb_insert_watch(uint16_t addr, uint8_t len)
+static bool_t gdb_insert_watch (uint16_t addr, uint8_t len)
 {
 	uint8_t i;
 	struct gdb_watch *w;
@@ -1699,7 +1699,7 @@ static bool_t gdb_insert_watch(uint16_t addr, uint8_t len)
  * @return      TRUE if the watchpoint was found and removed, FALSE otherwise.
  */
 __attribute__((optimize("-Os")))
-static bool_t gdb_remove_watch(uint16_t addr)
+static bool_t gdb_remove_watch (uint16_t addr)
 {
 	uint8_t i;
 
@@ -1734,7 +1734,7 @@ static bool_t gdb_remove_watch(uint16_t addr)
  * @return  TRUE if the value of a watched memory area has changed
  *          (GDB mode: the program should stop), FALSE otherwise.
  */
-static bool_t gdb_check_watches(void)
+static bool_t gdb_check_watches (void)
 {
 	uint8_t i;
 	struct gdb_watch *w;
@@ -1774,18 +1774,18 @@ static bool_t gdb_check_watches(void)
  * @param w  The watchpoint whose value has changed; w->old still contains
  *           the value before the change.
  */
-static void gdb_record_watch_hit(struct gdb_watch *w)
+static void gdb_record_watch_hit (struct gdb_watch *w)
 {
 	debug_watch_hit_t *h = &gdb_watch_last_hit;
 
 	h->watch_addr = w->addr;
-	h->len = w->len;
-	memcpy(h->old_value, w->old, w->len);
-	memcpy(h->new_value, (const void*)w->addr, w->len);
-	h->pc = (debug_code_addr_t)((uint32_t)gdb_ctx->pc << 1);	/* word -> byte address */
-	h->sp = gdb_ctx->sp;
-	h->in_isr = gdb_watch_in_isr;
-	h->depth = gdb_backtrace(h->backtrace, AVR8_BACKTRACE_DEPTH, gdb_ctx->sp);
+	h->len        = w->len;
+	memcpy (h->old_value, w->old,               w->len);
+	memcpy (h->new_value, (const void*)w->addr, w->len);
+	h->pc         = (debug_code_addr_t)((uint32_t)gdb_ctx->pc << 1);	/* word -> byte address */
+	h->sp         = gdb_ctx->sp;
+	h->in_isr     = gdb_watch_in_isr;
+	h->depth      = gdb_backtrace (h->backtrace, AVR8_BACKTRACE_DEPTH, gdb_ctx->sp);
 
 	if (gdb_watch_hit_cnt < 255)
 		gdb_watch_hit_cnt++;
@@ -1811,7 +1811,7 @@ static void gdb_record_watch_hit(struct gdb_watch *w)
  *                   first free byte, so the scan starts at sp + 1.
  * @return           Number of entries stored in bt.
  */
-static uint8_t gdb_backtrace(debug_code_addr_t *bt, uint8_t max_depth, uint16_t sp)
+static uint8_t gdb_backtrace (debug_code_addr_t *bt, uint8_t max_depth, uint16_t sp)
 {
 	uint8_t depth = 0;
 	uint16_t a = sp + 1;
@@ -1827,7 +1827,7 @@ static uint8_t gdb_backtrace(debug_code_addr_t *bt, uint8_t max_depth, uint16_t 
 #else
 		ret_addr = ((uint16_t)(p[0] & RET_ADDR_MASK) << 8) | p[1];
 #endif
-		if (gdb_is_return_address(ret_addr)) {
+		if (gdb_is_return_address (ret_addr)) {
 			bt[depth++] = (debug_code_addr_t)(ret_addr << 1);	/* word -> byte address */
 			a += GDB_RET_ADDR_BYTES;
 		}
@@ -1848,20 +1848,20 @@ static uint8_t gdb_backtrace(debug_code_addr_t *bt, uint8_t max_depth, uint16_t 
  * @return          TRUE if the instruction preceding ret_addr is CALL, RCALL,
  *                  ICALL or EICALL; FALSE otherwise.
  */
-static bool_t gdb_is_return_address(uint32_t ret_addr)
+static bool_t gdb_is_return_address (uint32_t ret_addr)
 {
 	uint16_t op;
 
 	if (ret_addr < 2 || ret_addr > ((uint32_t)FLASHEND >> 1))
 		return FALSE;
 
-	op = gdb_read_flash_word(ret_addr - 1);
+	op = gdb_read_flash_word (ret_addr - 1);
 	if ((op & 0xF000) == 0xD000)			/* RCALL k:  1101 kkkk kkkk kkkk */
 		return TRUE;
 	if (op == 0x9509 || op == 0x9519)		/* ICALL, EICALL */
 		return TRUE;
 
-	op = gdb_read_flash_word(ret_addr - 2);
+	op = gdb_read_flash_word (ret_addr - 2);
 	if ((op & 0xFE0E) == 0x940E)			/* CALL k:   1001 010k kkkk 111k + 16-bit k */
 		return TRUE;
 
