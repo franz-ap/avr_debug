@@ -1,6 +1,6 @@
 # Watchpoints in avr8-stub
 
-avr8-stub can stop or record the program when the value of a variable in RAM
+avr8-stub can stop or record the program status when the value of a variable in RAM
 changes. There are three ways to use this feature:
 
 | Mode | Set by | What happens on a hit |
@@ -8,6 +8,7 @@ changes. There are three ways to use this feature:
 | GDB watchpoint | GDB command `watch var` | Program stops, GDB shows the old and new value |
 | Local watchpoint | Program calls `debug_watch()` | Program stops in GDB (SIGTRAP) |
 | Stand-alone | Program calls `debug_watch()`, no GDB | Hit and backtrace are recorded, program continues |
+| (Disabled) | AVR8_LOCAL_WATCH_SUPPORT=0<br>No watchpoint handling on AVR side. GDB will probably fall back to software watchpoints, handled on GDB side: single stepping and memory check after each step. | Depends on GDB |
 
 ## How it works
 
@@ -25,8 +26,10 @@ Consequences:
   is not detected.
 * The program stops (or the hit is recorded) after the instruction that
   wrote the value, so the PC points to the following instruction.
-* While a watchpoint is active the program runs much slower than normal.
-* The pin of the external interrupt (`AVR8_SWINT_SOURCE`, D2 on the Uno by
+* While a watchpoint is active, the program runs much slower than normal.
+  If speed is important, you may want to use a hardware based solution instead,
+  e.g.: https://pyavrocd.io/v2.0/
+* The pin of the external interrupt (see `AVR8_SWINT_SOURCE`, D2 on the Uno by
   default) cannot be used by the program.
 
 ### Why an interrupt pin is required
@@ -34,7 +37,7 @@ Consequences:
 A watchpoint has to check the memory after **every** instruction. Otherwise
 the recorded PC and backtrace point to code that ran later than the write,
 not to the code that made it. On the AVR, only a level-triggered external
-interrupt that is permanently pending fires after each instruction.
+interrupt, that is permanently pending, fires after each instruction.
 
 The pin-free alternatives of the stub do not work for watchpoints:
 
@@ -52,7 +55,7 @@ The pin-free alternatives of the stub do not work for watchpoints:
 Choosing the pin:
 
 * **Uno, Nano, Pro Mini (ATmega328):** D2 (`AVR8_SWINT_SOURCE 0`) or
-  D3 (`AVR8_SWINT_SOURCE 1`). One of them must stay free.
+  D3 (`AVR8_SWINT_SOURCE 1`). One of them **must** stay free. See details below.
 * **Mega (ATmega1280/2560):** use `AVR8_SWINT_SOURCE 6` or `7` (INT6/INT7).
   These pins are not connected on the Arduino Mega board, so no usable pin
   is lost.
@@ -65,9 +68,9 @@ also tolerate what the stub does with it. As soon as a watchpoint or RAM
 breakpoint is set, or GDB single-steps, the stub configures the pin as an
 **output driven LOW**. The interrupt is level-triggered and reads the actual
 pin level. Disabling the interrupt only clears the enable bit in `EIMSK`;
-the pin stays an output LOW until the next reset.
+the pin output remains on LOW level until the next reset.
 
-Safe:
+**Safe:**
 
 * Pin not connected, e.g. a bare Uno or Nano.
 * Push button to GND. Pressing it changes nothing, because the pin is
@@ -77,7 +80,7 @@ Safe:
 * High-impedance inputs of other devices, as long as a permanent LOW does
   no harm there.
 
-Not safe:
+**Not safe:**
 
 * **Anything that actively drives the pin HIGH:** the output of a sensor or
   IC (e.g. an interrupt line), a button to VCC without a resistor, another
@@ -97,11 +100,11 @@ the other pin with `AVR8_SWINT_SOURCE`.
 
 | Option | Default | Meaning |
 |---|---|---|
+| `AVR8_LOCAL_WATCH_SUPPORT` | 0 | Local watchpoint handling's "main switch":<br>`2:` Local watchpoint handling enabled, also compiles `debug_watch()` / `debug_unwatch()`. Application can add/remove watchpoints.<br>`1:` Local watchpoint handling enabled, only GDB can use it. Saves some flash space.<br>`0:` Local watchpoint handling disabled. Exactly like the pre-November-2026 version of avr8_stub. Saves flash space. GDB needs to handle watchpoints itself ("software watchpoints") and might refuse to set watchpoints.|
 | `AVR8_MAX_WATCHES` | 2 | Number of watchpoints that can be active at the same time. `0` removes the watchpoint support completely. |
-| `AVR8_WATCH_MAXLEN` | 4 | Maximum size of one watched variable in bytes. |
-| `AVR8_LOCAL_WATCH_SUPPORT` | 1 | `1` compiles `debug_watch()` / `debug_unwatch()`. `0` saves flash; GDB watchpoints still work. |
-| `AVR8_STANDALONE_WATCH` | 0 | `1` enables the stand-alone mode (see below). |
-| `AVR8_BACKTRACE_DEPTH` | 8 | Stand-alone mode: maximum number of backtrace entries. |
+| `AVR8_WATCH_MAXLEN` | 4 | Maximum size of one watched variable / memory area in bytes. |
+| `AVR8_STANDALONE_WATCH` | 0 | `1:` Enables the stand-alone mode (see below). |
+| `AVR8_BACKTRACE_DEPTH` | 8 | Stand-alone mode: maximum number of backtrace entries to be recorded. |
 
 All options use `#ifndef`, so they can also be set as compiler flags
 (`-DAVR8_STANDALONE_WATCH=1`).
@@ -118,6 +121,8 @@ offset `0x800000`. When the watchpoint triggers, the stub adds
 `watch:<addr>;` to the stop reply so that GDB can show the old and new value.
 
 ## Local watchpoints
+
+The application can add or remove watchpoints itself.
 
 ```c
 #include "avr8-stub.h"
@@ -136,30 +141,32 @@ uint8_t debug_unwatch(const volatile void* addr);
   This also takes the current value as the new reference value.
 
 With `avr_debugger.h` you can use the macros `dbg_watch(var)` and
-`dbg_unwatch(var)`. They expand to nothing unless `__DEBUG__` is defined.
+`dbg_unwatch(var)` instead, for convenience. They expand to nothing unless `__DEBUG__` is defined.
 
-Note: GDB does not know about watchpoints set by the program. If GDB
-removes a watchpoint on the same address (`z2`), the local watchpoint is
-removed too.
+Note:
+GDB does not know about watchpoints set by the application.
+If GDB removes a watchpoint on the same address (`z2`), the local watchpoint is removed as well.
 
 ## Stand-alone mode
 
-Set `AVR8_STANDALONE_WATCH` to 1 to find memory corruption without a
-debugger. In this mode:
+This can be useful for applications, that need the (only) UART themselves. So, GDB cannot be connected.
+
+Set `AVR8_STANDALONE_WATCH` to 1 to find memory corruption without a debugger.
+In this mode:
 
 * The stub does not use the UART at all, so the program can use `Serial`.
 * There is no GDB communication. Breakpoints and stepping are not available.
   `breakpoint()` and `debug_message()` do nothing.
 * When a watchpoint triggers, the stub records the hit and the program
   continues. Only the **last** hit is kept.
-* Interrupts of the program keep working. After each check the stub briefly
+* Interrupts of the program keep working. After each check, the stub briefly
   lets one pending interrupt run. Interrupt handlers of the program run on
   the stub's internal stack (`GDB_STACKSIZE`, 160 bytes in this mode).
   Increase it if your interrupt handlers use a lot of stack.
 
 Requirements: `AVR8_BREAKPOINT_MODE 1`, `AVR8_LOAD_SUPPORT 0`,
-`AVR8_MAX_WATCHES > 0`, `AVR8_LOCAL_WATCH_SUPPORT 1`. Other combinations
-stop the build with `#error`.
+`AVR8_MAX_WATCHES > 0`, `AVR8_LOCAL_WATCH_SUPPORT 2`.
+Other combinations stop the build with `#error`.
 
 ### Querying a hit
 
@@ -167,10 +174,10 @@ stop the build with `#error`.
 uint8_t debug_watch_get_hit(debug_watch_hit_t* hit);
 ```
 
-The function returns the number of hits since the previous call. The count
-saturates at 255, and 0 means no hit. If the return value is not 0, the data
-of the last hit is copied to `*hit`. `hit` may be `NULL`, which only resets
-the counter.
+The function returns the number of hits since the previous call.
+The count saturates at 255, and 0 means no hit.
+If the return value is not 0, the data of the last hit is copied to `*hit`.
+`hit` may be `NULL`, which only resets the counter.
 
 | Field | Meaning |
 |---|---|
@@ -192,10 +199,11 @@ All addresses are byte addresses, the same as in `avr-objdump` and the
 avr-addr2line -f -C -e program.elf 0x1a2c 0x0f40 0x0b12
 ```
 
-The tool prints the function name and source line of each address. For `pc`
-you get the line after the write. Backtrace entries point to the line after
-the call. To see the exact writing instruction, look at `pc` in
-`avr-objdump -d -S program.elf`; the store instruction is directly before it.
+The tool prints the function name and source line of each address.
+For `pc` you get the line after the write. Backtrace entries point to the line after
+the call.
+To see the exact writing instruction, look at `pc` in `avr-objdump -d -S program.elf`;
+the store instruction is directly before it.
 
 ### How the backtrace is found
 
