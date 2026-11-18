@@ -350,8 +350,8 @@ typedef uint8_t bool_t;
 	#if (AVR8_MAX_WATCHES <= 0)
 		#error AVR8_STANDALONE_WATCH requires AVR8_MAX_WATCHES > 0.
 	#endif
-	#if ! AVR8_LOCAL_WATCH_SUPPORT
-		#error AVR8_STANDALONE_WATCH requires AVR8_LOCAL_WATCH_SUPPORT 1.
+	#if ! (AVR8_LOCAL_WATCH_SUPPORT >= 2)
+		#error AVR8_STANDALONE_WATCH requires AVR8_LOCAL_WATCH_SUPPORT >= 2.
 	#endif
 	#if (AVR8_BACKTRACE_DEPTH < 1) || (AVR8_BACKTRACE_DEPTH > 255)
 		#error AVR8_BACKTRACE_DEPTH must be between 1 and 255.
@@ -606,7 +606,7 @@ void watchdogConfig(uint8_t x) {
 /**
  * Data used by this driver.
  */
-#if AVR8_WATCH_SUPPORT
+#if AVR8_LOC_WATCH_IS_AVAIL
 /*
  Structure to hold information about one (write) watchpoint.
  The watched memory is compared with the stored value after every instruction
@@ -649,7 +649,7 @@ struct gdb_context
 	Address_t breaks [AVR8_MAX_BREAKS+1];	/* Breakpoints */
 #endif
 
-#if (AVR8_WATCH_SUPPORT == 1)
+#if AVR8_LOC_WATCH_IS_AVAIL
 	struct gdb_watch watches[AVR8_MAX_WATCHES];	/* Watchpoints */
 	uint8_t watch_cnt;							/* number of watchpoints set */
 #if ! AVR8_STANDALONE_WATCH
@@ -668,7 +668,7 @@ struct gdb_context
 	uint8_t target_running;		/* 0 if target program is stopped */
 };
 
-#if (AVR8_STANDALONE_WATCH == 1)
+#if AVR8_STANDALONE_WATCH
 /* Number of watchpoint hits since the last debug_watch_get_hit() call (saturates at 255) */
 static volatile uint8_t gdb_watch_hit_cnt;
 /* Data of the last watchpoint hit, read by debug_watch_get_hit() */
@@ -709,15 +709,15 @@ static void gdb_insert_remove_breakpoint(const uint8_t *buff);
 static bool_t gdb_insert_breakpoint(Address_t rom_addr);
 static void gdb_remove_breakpoint(Address_t rom_addr);
 static uint8_t safe_pgm_read_byte(uint32_t rom_addr_b);
-#endif	/* AVR8_STANDALONE_WATCH == 0 */
+#endif	/* ! AVR8_STANDALONE_WATCH */
 
-#if (AVR8_WATCH_SUPPORT == 1)	/* watchpoints only with RAM BP */
+#if AVR8_LOC_WATCH_IS_AVAIL
 	static bool_t gdb_insert_watch(uint16_t addr, uint8_t len);
 	static bool_t gdb_remove_watch(uint16_t addr);
 	static bool_t gdb_check_watches(void);
 #endif
 
-#if (AVR8_STANDALONE_WATCH == 1)
+#if AVR8_STANDALONE_WATCH
 	static void gdb_record_watch_hit(struct gdb_watch *w);
 	static uint8_t gdb_backtrace(debug_code_addr_t *bt, uint8_t max_depth, uint16_t sp);
 	static bool_t gdb_is_return_address(uint32_t ret_addr);
@@ -888,7 +888,7 @@ static char* gdb_str_packetsz = "PacketSize=" STR_VAL(AVR8_MAX_BUFF_HEX);
 #if (AVR8_LOAD_SUPPORT == 1)
 	#define GDB_STACKSIZE 	(144)
 #else
-	#if (AVR8_STANDALONE_WATCH == 1)
+	#if AVR8_STANDALONE_WATCH
 		/* Stand-alone watchpoints: ISR -> gdb_check_watches -> gdb_record_watch_hit
 		   -> gdb_backtrace -> ... ; in addition the interrupt handlers of the program
 		   run nested on this stack (see the interrupt window in the INTx ISR).
@@ -985,7 +985,7 @@ void debug_init(void)
 	gdb_ctx->breakpoint_enabled = 0;
 #endif
 
-#if (AVR8_WATCH_SUPPORT == 1)
+#if AVR8_LOC_WATCH_IS_AVAIL
 	/* Init watchpoints */
 	memset(gdb_ctx->watches, 0, sizeof(gdb_ctx->watches));
 	gdb_ctx->watch_cnt = 0;
@@ -1134,7 +1134,7 @@ static void putDebugChar(uint8_t c)
 	/* Put data into buffer, sends the data */
 	UDR = c;
 }
-#endif	/* AVR8_STANDALONE_WATCH == 0 */
+#endif	/* ! AVR8_STANDALONE_WATCH */
 /* ---------------- end UART communication routines ---------------------------------- */
 
 
@@ -1614,7 +1614,7 @@ static void gdb_insert_remove_breakpoint(const uint8_t *buff)
 		}
 		break;
 
-#if (AVR8_WATCH_SUPPORT == 1)	/* watchpoints only with RAM BP */
+#if AVR8_LOC_WATCH_IS_AVAIL
 	case '2': /* write watchpoint: Z2,<addr>,<len> / z2,<addr>,<len> */
 		/* GDB uses 0x800000 offset for data (RAM) addresses */
 		if ((rom_addr_b & 0xFF0000UL) != 0x800000UL) {
@@ -1640,10 +1640,11 @@ static void gdb_insert_remove_breakpoint(const uint8_t *buff)
 		gdb_send_reply("");
 		break;
 	}
-}
-#endif	/* AVR8_STANDALONE_WATCH == 0 (end of 1st part of GDB communication) */
+}  // gdb_insert_remove_breakpoint
+#endif	/* ! AVR8_STANDALONE_WATCH (end of 1st part of GDB communication) */
 
-#if (AVR8_WATCH_SUPPORT == 1)	/* watchpoints only with RAM BP */
+
+#if AVR8_LOC_WATCH_IS_AVAIL
 /**
  * Insert a write watchpoint (used for GDB packet Z2 and by debug_watch()).
  * The current content of the watched memory is stored as the reference value.
@@ -1685,7 +1686,9 @@ static bool_t gdb_insert_watch(uint16_t addr, uint8_t len)
 	memcpy(free_w->old, (const void*)addr, len);	/* store reference value */
 	free_w->addr = addr;
 	return TRUE;
-}
+}  // gdb_insert_watch
+
+
 
 /**
  * Remove a watchpoint (used for GDB packet z2 and by debug_unwatch()).
@@ -1711,7 +1714,9 @@ static bool_t gdb_remove_watch(uint16_t addr)
 		}
 	}
 	return FALSE;
-}
+}  // gdb_remove_watch
+
+
 
 /**
  * Check all watchpoints: compare the watched memory with the stored value.
@@ -1736,7 +1741,7 @@ static bool_t gdb_check_watches(void)
 
 	for (i = 0, w = gdb_ctx->watches; i < AVR8_MAX_WATCHES; i++, w++) {
 		if (w->addr && memcmp(w->old, (const void*)w->addr, w->len) != 0) {
-#if (AVR8_STANDALONE_WATCH == 1)
+#if AVR8_STANDALONE_WATCH
 			gdb_record_watch_hit(w);
 #else
 			gdb_ctx->watch_hit = w->addr;
@@ -1746,10 +1751,12 @@ static bool_t gdb_check_watches(void)
 		}
 	}
 	return FALSE;
-}
-#endif	/* AVR8_WATCH_SUPPORT == 1 */
+}  // gdb_check_watches
+#endif	/* AVR8_LOC_WATCH_IS_AVAIL */
 
-#if (AVR8_STANDALONE_WATCH == 1)
+
+
+#if AVR8_STANDALONE_WATCH
 /* Number of bytes of a return address on the stack */
 #if defined(__AVR_ATmega2560__)
 	#define GDB_RET_ADDR_BYTES	(3)
@@ -1782,7 +1789,9 @@ static void gdb_record_watch_hit(struct gdb_watch *w)
 
 	if (gdb_watch_hit_cnt < 255)
 		gdb_watch_hit_cnt++;
-}
+}  // gdb_record_watch_hit
+
+
 
 /**
  * Stand-alone mode: find the return addresses on the stack of the interrupted
@@ -1827,7 +1836,9 @@ static uint8_t gdb_backtrace(debug_code_addr_t *bt, uint8_t max_depth, uint16_t 
 		}
 	}
 	return depth;
-}
+}  // gdb_backtrace
+
+
 
 /**
  * Stand-alone mode: check whether a value could be a return address, i.e.
@@ -1855,7 +1866,9 @@ static bool_t gdb_is_return_address(uint32_t ret_addr)
 		return TRUE;
 
 	return FALSE;
-}
+}  // gdb_is_return_address
+
+
 
 /**
  * Stand-alone mode: read one word from flash.
@@ -1870,8 +1883,10 @@ static uint16_t gdb_read_flash_word(uint32_t word_addr)
 #else
 	return pgm_read_word((uint16_t)(word_addr << 1));
 #endif
-}
-#endif	/* AVR8_STANDALONE_WATCH == 1 */
+}  // gdb_read_flash_word
+#endif	/* AVR8_STANDALONE_WATCH */
+
+
 
 /* Second part of the GDB communication: breakpoints, registers, memory */
 #if ! AVR8_STANDALONE_WATCH
@@ -1949,7 +1964,9 @@ static bool_t gdb_insert_breakpoint(Address_t rom_addr)
 
 
 #endif	/* AVR8_BREAKPOINT_MODE */
-}
+}  // gdb_insert_breakpoint
+
+
 
 static void gdb_remove_breakpoint(Address_t rom_addr)
 {
@@ -2003,7 +2020,9 @@ static void gdb_remove_breakpoint(Address_t rom_addr)
 	}
 	/*gdb_remove_breakpoint_ptr(breakp);*/
 #endif
-}
+}  // gdb_remove_breakpoint
+
+
 
 /* ----------------- Functions for flash breakpoints support ------------------- */
 #if ( (AVR8_BREAKPOINT_MODE == 0) || (AVR8_BREAKPOINT_MODE == 2) )
@@ -2016,7 +2035,9 @@ static uint16_t safe_pgm_read_word(uint32_t rom_addr_b)
 	else
 #endif
 		return pgm_read_word(rom_addr_b);
-}
+}  // safe_pgm_read_word
+
+
 
 static void gdb_remove_breakpoint_ptr(struct gdb_break *breakp)
 {
@@ -2035,7 +2056,9 @@ static void gdb_remove_breakpoint_ptr(struct gdb_break *breakp)
 	breakp->addr = 0;
 	GDB_BREAK_CLEAR_STATUS((*breakp));
 
-}
+}  // gdb_remove_breakpoint_ptr
+
+
 
 /* rom_addr is in words */
 static struct gdb_break *gdb_find_break(Address_t rom_addr)
@@ -2047,7 +2070,7 @@ static struct gdb_break *gdb_find_break(Address_t rom_addr)
 			return &gdb_ctx->breaks[i];
 
 	return NULL;
-}
+}  // gdb_break
 
 #endif	/*  AVR8_FLASH_BREAKPOINTS */
 
@@ -2110,7 +2133,9 @@ static void gdb_read_registers(void)
 	gdb_ctx->buff_sz = i;
 	gdb_send_buff(gdb_ctx->buff, gdb_ctx->buff_sz);
 
-}
+}  // gdb_read_registers
+
+
 
 __attribute__((optimize("-Os")))
 static void gdb_write_registers(const uint8_t *buff)
@@ -2152,7 +2177,9 @@ static void gdb_write_registers(const uint8_t *buff)
 
 	gdb_send_reply("OK");
 
-}
+}  // gdb_write_registers
+
+
 
 __attribute__((optimize("-Os")))
 static void gdb_read_memory(const uint8_t *buff)
@@ -2209,7 +2236,9 @@ static void gdb_read_memory(const uint8_t *buff)
 	}
 	gdb_ctx->buff_sz = sz * 2;
 	gdb_send_buff(gdb_ctx->buff, gdb_ctx->buff_sz);
-}
+}  // gdb_read_memory
+
+
 
 __attribute__((optimize("-Os")))
 static void gdb_write_memory(const uint8_t *buff)
@@ -2263,7 +2292,9 @@ static void gdb_write_memory(const uint8_t *buff)
 		return;
 	}
 	gdb_send_reply("OK");
-}
+}  // gdb_write_memory
+
+
 
 #if 0
 /** Support for binary load of program */
@@ -2312,7 +2343,9 @@ static void gdb_write_binary(const uint8_t *buff) {
 	}
 	gdb_send_reply("OK");
 
-}
+}  // gdb_write_binary
+
+
 
 /* Convert the binary stream in BUF to memory.
 
@@ -2347,9 +2380,9 @@ static unsigned char *bin2mem(unsigned char *buf, unsigned char *mem, int count)
 	}
 
 	return mem;
-}
+}  // bin2mem
 #endif
-#endif	/* AVR8_STANDALONE_WATCH == 0 (end of 2nd part of GDB communication) */
+#endif	/* ! AVR8_STANDALONE_WATCH  (end of 2nd part of GDB communication) */
 
 /* ------------------------------------------------------------- */
 
@@ -2411,7 +2444,7 @@ ISR(UART_ISR_VECTOR, ISR_BLOCK ISR_NAKED)
 		"ret\n");			/* exit with interrupts disabled (reti would enable them) */
 #endif
 }
-#endif	/* AVR8_STANDALONE_WATCH == 0 */
+#endif	/* ! AVR8_STANDALONE_WATCH */
 
 
 /*
@@ -2429,7 +2462,7 @@ ISR(UART_ISR_VECTOR, ISR_BLOCK ISR_NAKED)
 
 ISR(AVR8_SWINT_VECT, ISR_BLOCK ISR_NAKED )
 {
-#if (AVR8_BREAKPOINT_MODE == 1) && ! AVR8_STANDALONE_WATCH	/* RAM only BPs */
+#if (AVR8_BREAKPOINT_MODE == 1) && ( ! AVR8_STANDALONE_WATCH )	/* RAM only BPs */
 	static uint8_t ind_bks;
 #endif
 
@@ -2454,7 +2487,7 @@ ISR(AVR8_SWINT_VECT, ISR_BLOCK ISR_NAKED )
 	G_LastPC = gdb_ctx->pc << 1;	/* convert to byte address */
 #endif
 
-#if (AVR8_STANDALONE_WATCH == 1)
+#if AVR8_STANDALONE_WATCH
 	/* Stand-alone mode: no GDB, no breakpoints, no stepping. Only check the
 	 * watchpoints; a hit is recorded by gdb_check_watches() and the program
 	 * continues. */
@@ -2478,7 +2511,7 @@ ISR(AVR8_SWINT_VECT, ISR_BLOCK ISR_NAKED )
 		gdb_watch_in_isr = 0;
 	}
 
-#else	/* AVR8_STANDALONE_WATCH == 0 */
+#else	/* ! AVR8_STANDALONE_WATCH */
 
 	/* if single-stepping, go to trap */
 	if ( gdb_ctx->singlestep_enabled)
@@ -2516,7 +2549,7 @@ ISR(AVR8_SWINT_VECT, ISR_BLOCK ISR_NAKED )
 				goto trap;
 		}
 
-#if (AVR8_WATCH_SUPPORT == 1)
+#if AVR8_LOC_WATCH_IS_AVAIL
 		/* check watchpoints - stop if any watched value has changed */
 		if ( GDB_WATCH_ACTIVE() && gdb_check_watches() )
 			goto trap;
@@ -2575,7 +2608,7 @@ out:
 #endif /* (AVR8_USE_TIMER0_INSTEAD_OF_WDT == 0) */
 
 
-#if (AVR8_STANDALONE_WATCH == 1)
+#if AVR8_STANDALONE_WATCH
 /* Stand-alone mode: there is no GDB to stop in, so breakpoint() and
  * debug_message() do nothing. They exist so that programs using them
  * (or the dbg_* macros) still compile and link. */
@@ -2593,7 +2626,7 @@ void debug_message(const char* msg)
 	(void)msg;
 }
 
-#else	/* AVR8_STANDALONE_WATCH == 0 */
+#else	/* ! AVR8_STANDALONE_WATCH */
 
 /* This function must be naked, otherwise the stack can be corrupted
  * and save_regs1() assumes stack is not touched. */
@@ -2628,7 +2661,7 @@ void breakpoint(void)
 		"out	__SREG__, r31\n"	/* restore SREG */
 		"lds	r31, regs+31\n"		/* real value of r31 */
 		"ret \n");
-}
+}  // breakpoint
 
 
 /*
@@ -2663,10 +2696,12 @@ void debug_message(const char* msg)
 	/* Example packet we send:
 	 $O48656c6c6f2c20776f726c64210a#55 = Hello, world!\n
 	 */
-}
+}  // debug_message
 #endif	/* AVR8_STANDALONE_WATCH */
 
-#if (AVR8_LOCAL_WATCH_SUPPORT == 1)
+
+
+#if (AVR8_LOCAL_WATCH_SUPPORT >= 2)
 /**
  * Set a write watchpoint from within the debugged program.
  * Same effect as the GDB command "watch <variable>". See avr8-stub.h.
@@ -2679,7 +2714,7 @@ void debug_message(const char* msg)
  */
 uint8_t debug_watch(const volatile void* addr, uint8_t len)
 {
-#if (AVR8_WATCH_SUPPORT == 1)
+#if AVR8_LOC_WATCH_IS_AVAIL
 	uint8_t cSREG;
 	bool_t ok;
 
@@ -2696,9 +2731,11 @@ uint8_t debug_watch(const volatile void* addr, uint8_t len)
 #else
 	(void)addr;
 	(void)len;
-	return 0;		/* watchpoints not supported (flash breakpoints or AVR8_MAX_WATCHES == 0) */
+	return 0;   /* Local watchpoints not supported (flash breakpoints or AVR8_MAX_WATCHES == 0, ...) */
 #endif
-}
+}  // debug_watch
+
+
 
 /**
  * Remove a watchpoint set by debug_watch() or by GDB.
@@ -2710,7 +2747,7 @@ uint8_t debug_watch(const volatile void* addr, uint8_t len)
  */
 uint8_t debug_unwatch(const volatile void* addr)
 {
-#if (AVR8_WATCH_SUPPORT == 1)
+#if AVR8_LOC_WATCH_IS_AVAIL
 	uint8_t cSREG;
 	bool_t ok;
 
@@ -2728,12 +2765,14 @@ uint8_t debug_unwatch(const volatile void* addr)
 	return ok;
 #else
 	(void)addr;
-	return 0;		/* watchpoints not supported (flash breakpoints or AVR8_MAX_WATCHES == 0) */
+	return 0;   /* Local watchpoints not supported (flash breakpoints or AVR8_MAX_WATCHES <= 0, ...) */
 #endif
-}
-#endif	/* AVR8_LOCAL_WATCH_SUPPORT == 1 */
+}  // debug_unwatch
+#endif	/* AVR8_LOCAL_WATCH_SUPPORT >= 2 */
 
-#if (AVR8_STANDALONE_WATCH == 1)
+
+
+#if AVR8_STANDALONE_WATCH
 /**
  * Stand-alone mode: query whether a watchpoint has triggered and get the
  * data of the last hit. Resets the hit counter. See avr8-stub.h.
@@ -2758,8 +2797,8 @@ uint8_t debug_watch_get_hit(debug_watch_hit_t* hit)
 	}
 	SREG = cSREG;	/* restore SREG value (I-bit) */
 	return cnt;
-}
-#endif	/* AVR8_STANDALONE_WATCH == 1 */
+}  // debug_watch_get_hit
+#endif	// AVR8_STANDALONE_WATCH
 
 
 
@@ -2852,7 +2891,9 @@ static void gdb_send_buff(const uint8_t *buff, uint8_t sz)
 	putDebugChar('#');
 	putDebugChar(nib2hex((sum >> 4) & 0xf));
 	putDebugChar(nib2hex(sum & 0xf));
-}
+}  // gdb_send_buff
+
+
 
 __attribute__((optimize("-Os")))
 static void gdb_send_reply(const char *reply)
@@ -2864,7 +2905,9 @@ static void gdb_send_reply(const char *reply)
 	memcpy(gdb_ctx->buff, reply, gdb_ctx->buff_sz);
 	gdb_send_buff(gdb_ctx->buff, gdb_ctx->buff_sz);
 
-}
+}  // gdb_send_reply
+
+
 
 /* Note: we send "expedited response T" which contains also the SREG, SP and PC
  * to speed things up.
@@ -2919,7 +2962,7 @@ static void gdb_send_state(uint8_t signo)
 	gdb_ctx->buff[26] = '0'; /* gdb wants 32-bit value, send 0 */
 	gdb_ctx->buff[27] = '0'; /* gdb wants 32-bit value, send 0 */
 
-#if (AVR8_WATCH_SUPPORT == 1)
+#if AVR8_LOC_WATCH_IS_AVAIL
 	/* If the program stopped because of a watchpoint, tell GDB which one:
 	 append "watch:<addr>;" where <addr> is the RAM address with GDB's
 	 0x800000 offset, e.g. "watch:800100;". GDB then shows the old and new
@@ -2937,8 +2980,8 @@ static void gdb_send_state(uint8_t signo)
 
 	/* not in hex, send from ram */
 	gdb_send_buff(gdb_ctx->buff, gdb_ctx->buff_sz);
-}
-#endif	/* AVR8_STANDALONE_WATCH == 0 */
+}  // gdb_send_state
+#endif	// ! AVR8_STANDALONE_WATCH
 
 
 
@@ -3180,7 +3223,7 @@ static uint8_t safe_pgm_read_byte(uint32_t rom_addr_b)
 #endif
 		return pgm_read_byte(rom_addr_b);
 }
-#endif	/* AVR8_STANDALONE_WATCH == 0 */
+#endif	/* ! AVR8_STANDALONE_WATCH */
 
 
 
