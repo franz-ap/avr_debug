@@ -16,7 +16,7 @@ This is debugger for Arduino based on GNU Debugger (GDB). The debugger is implem
   + New functions `debug_watch()` / `debug_unwatch()` (macros `dbg_watch()` / `dbg_unwatch()`) to set watchpoints from the program.
   + New stand-alone mode (AVR8\_STANDALONE\_WATCH = 1) without GDB and without using the UART: watchpoint hits are recorded with a backtrace and can be queried with `debug_watch_get_hit()`.
   + New options AVR8\_MAX\_WATCHES, AVR8\_WATCH\_MAXLEN, AVR8\_LOCAL\_WATCH\_SUPPORT, AVR8\_STANDALONE\_WATCH and AVR8\_BACKTRACE\_DEPTH in avr8-stub.h.
-  + See [doc/watchpoints.md](doc/watchpoints.md) and the [examples/standalone_watch/standalone_watch.ino](example) in examples/standalone_watch.
+  + See [doc/watchpoints.md](doc/watchpoints.md) and the [example](examples/standalone_watch/standalone_watch.ino) in examples/standalone_watch.
 
 **March 2022**
 + Added support for other UART than the default UART0 for Arduino Mega. (see AVR8_UART_NUMBER in avr8-stub.h).
