@@ -240,3 +240,67 @@ This heuristic has limits:
 See `examples/standalone_watch/standalone_watch.ino`. It contains a classic
 off-by-one `strcpy()` that overwrites the struct field after a `char[8]`, and
 prints the hit and backtrace over `Serial`.
+
+**Output:**
+```
+avr8-stub stand-alone watchpoint example
+========================================
+Running in stand-alone debug mode.
+setName (Init)
+Local watchpoint 'mode' added successfully.
+demo 0, uptime: 0 s: setName (Anna)
+demo 1, uptime: 1 s: setName (Bob)
+demo 2, uptime: 2 s: setName (Kimberly)
+Watchpoint hit (1x since last query):
+  address 0x1BD, 1 byte(s)
+  value   0x3 -> 0x0
+  pc 0x1DD6  sp 0x88D
+  backtrace: 0xA20 0xA9A 0x4ADA 0x6674 0x41C0 0xCEA 0x44A8 0x16C2
+demo 3, uptime: 5 s: setName (Max)
+demo 4, uptime: 6 s: setName (Anna)
+demo 5, uptime: 8 s: setName (Bob)
+demo 6, uptime: 9 s: setName (Kimberly)
+Watchpoint hit (1x since last query):
+  address 0x1BD, 1 byte(s)
+  value   0x3 -> 0x0
+  pc 0x1DD6  sp 0x88D
+  backtrace: 0xA20 0xA9A 0x4ADA 0x6674 0x41C0 0xCEA 0x14E8 0x16C2
+demo 7, uptime: 12 s: setName (Max)
+...
+```
+
+This shows, that after demo line 2 a data modification 0x3 -> 0x0 at address 0x1BD was detected. Watchpoint hit.
+It also shows, that millis() and Serial still work.
+
+Using avr-addr2line, we can find out, where those addresses belong to:
+```
+avr-addr2line -f -C -e standalone_debugdemo_af 0x1DD6
+strcpy
+??:?
+```
+We see: strcpy modified the byte in question. "??:?" ... We do not know the source code file name of strcpy.
+
+Who called strcpy?
+Here is the whole story:
+```
+avr-addr2line -f -C -e standalone_debugdemo_af 0x1DD6 0xA20 0xA9A 0x4ADA 0x6674 0x41C0 0xCEA 0x44A8 0x16C2
+strcpy
+??:?
+setName(char const*)
+avr_debug/examples/standalone_watch/standalone_watch.ino:81
+nextUser(unsigned char)
+avr_debug/examples/standalone_watch/standalone_watch.ino:91
+??
+??:0
+??
+??:0
+??
+??:0
+loop
+avr_debug/examples/standalone_watch/standalone_watch.ino:181
+??
+??:0
+main
+hardware/arduino/avr/cores/arduino/main.cpp:47
+```
+We see, that the above mentioned heuristic returned a bit too much information. But that is easy to skip and we have all details, that we need to fix the problem.
