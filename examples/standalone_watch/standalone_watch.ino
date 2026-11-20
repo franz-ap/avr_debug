@@ -34,13 +34,26 @@
 
 #include <string.h>
 #include <Arduino.h>
-#include <avr8-stub.h>
+//#include <avr8-stub.h>
+#include <avr_debugger.h>
 
 #if !defined(AVR8_STANDALONE_WATCH) || (! AVR8_STANDALONE_WATCH)
   #warning Please set AVR8_STANDALONE_WATCH to 1 in your makefile or in the library file avr8-stub.h, if you want the full demonstration.
 #endif
 #if AVR8_STANDALONE_WATCH  &&  (! (AVR8_LOCAL_WATCH_SUPPORT >= 2))
   #error Please set AVR8_LOCAL_WATCH_SUPPORT to 2 in your makefile or in the library file avr8-stub.h. Required to run this demo in stand-alone debug mode.
+#endif
+
+#if AVR8_STANDALONE_WATCH
+   // The UART is not occupied by GDB. We can use it.
+#  define    INFO_MSG(txt)   Serial.print (txt)
+#else
+#  ifdef __DEBUG__
+      // GDB connection expected. Send the text there.
+#     define INFO_MSG(txt)   debug_message(txt)
+#  else
+#     define INFO_MSG(txt)   Serial.print (txt)
+#  endif
 #endif
 
 
@@ -59,18 +72,18 @@ const uint8_t NAME_COUNT = sizeof(names) / sizeof(names[0]);
 // noinline keeps it as a separate function so it shows up in the backtrace.
 __attribute__((noinline)) void setName (const char* newName)
 {
-  Serial.print (F("setName ("));
-  Serial.print (newName);
-  Serial.println (F(")"));
+  INFO_MSG ("setName (");
+  INFO_MSG (newName);
+  INFO_MSG (F(")\n"));
   strcpy (settings.name, newName);   // BUG: "Kimberly" needs 9 bytes
 } // setName
 
 
 __attribute__((noinline)) void nextUser (uint8_t index)
 {
-  Serial.print (F("demo "));
-  Serial.print (index);
-  Serial.print (F(": "));
+  char buf[50];
+  snprintf (buf, sizeof(buf), "demo %d: ", (int)index);
+  INFO_MSG (buf);
   setName (names[index % NAME_COUNT]);
 } // nextUser
 
@@ -81,7 +94,7 @@ void printHit (uint8_t count, const debug_watch_hit_t& hit)
 {
   Serial.print (F("Watchpoint hit ("));
   Serial.print (count);
-  Serial.println (F("x since last query)"));
+  Serial.println (F("x since last query):"));
 
   Serial.print (F("  address 0x"));
   Serial.print (hit.watch_addr, HEX);
@@ -122,8 +135,20 @@ void printHit (uint8_t count, const debug_watch_hit_t& hit)
 
 void setup (void)
 {
+  //dbg_start ();  // Initialize the stub if __DEBUG__ is defined. Does not touch the UART, if AVR8_STANDALONE_WATCH is enabled.
+  debug_init ();  // Initialize the stub. Does not touch the UART, if AVR8_STANDALONE_WATCH is enabled.
+  sei();
+# if AVR8_STANDALONE_WATCH
   Serial.begin (115200);
   Serial.println (F("avr8-stub stand-alone watchpoint example"));
+  Serial.println (F("========================================"));
+  Serial.println (F("Running in stand-alone debug mode."));
+# else
+  debug_message ("avr8-stub watchpoint example");
+# endif
+# ifndef __DEBUG__
+  Serial.println (F("Running in normal (non-debug) mode."));
+# endif
 
   pinMode (LED_BUILTIN, OUTPUT);
 
@@ -131,13 +156,10 @@ void setup (void)
   setName ("Init");
 
 # if AVR8_LOCAL_WATCH_SUPPORT >= 2
-  debug_init ();  // Initialize the stub (does not touch the UART, if AVR8_STANDALONE_WATCH is enabled).
   if (debug_watch (&settings.mode, sizeof(settings.mode)))
-    Serial.println (F("Running in debug mode. Watchpoint 'mode' successfully added."));
+    INFO_MSG ("Local watchpoint 'mode' added successfully.\n");
   else
-    Serial.println (F("debug_watch() failed - check the configuration"));
-# else
-  Serial.println (F("Running in normal (non-debug) mode."));
+    INFO_MSG ("debug_watch() FAILED - check configuration\n");
 # endif
 } // setup
 
@@ -153,9 +175,15 @@ void loop (void)
   uint8_t           count = debug_watch_get_hit (&hit);
   if (count) {
     printHit (count, hit);
-    settings.mode = 3;           // Repair. Note: this write triggers the watchpoint ...
-    debug_watch_get_hit (NULL);  // ... so, discard that (expected) hit.
+    settings.mode = 3;                 // Repair. Note: this write triggers the watchpoint ...
+    (void)debug_watch_get_hit (NULL);  // ... so, discard that (expected) hit.
   }
+# endif
+
+# ifdef AVR8_STUB_DEBUG   // Extra output for advanced users who need to debug the debugger (gdb stub) itself.
+  extern uint8_t  G_Debug_INTxCount;  /* How many times external INTx ISR was called */
+  extern uint16_t G_LastPC;           /* Value of PC register in INTx ISR            */
+  Serial.print (F("G_Debug_INTxCount=")); Serial.print (G_Debug_INTxCount); Serial.print (F("   G_LastPC=")); Serial.println (G_LastPC);
 # endif
 
   // Interrupts (millis, delay, Serial) keep working while a watchpoint is

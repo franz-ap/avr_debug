@@ -2492,7 +2492,7 @@ ISR(AVR8_SWINT_VECT, ISR_BLOCK ISR_NAKED )
 	 * watchpoints; a hit is recorded by gdb_check_watches() and the program
 	 * continues. */
 	if ( GDB_WATCH_ACTIVE() )
-		gdb_check_watches();
+		(void)gdb_check_watches();
 
 	/* Let the other interrupts of the program run.
 	 * Our level-triggered INTx is pending again right after each instruction
@@ -2507,7 +2507,7 @@ ISR(AVR8_SWINT_VECT, ISR_BLOCK ISR_NAKED )
 		EIMSK |= _BV(AVR8_SWINT_INTMASK);
 		/* A change detected now was made by the ISR which just ran */
 		gdb_watch_in_isr = 1;
-		gdb_check_watches();
+		(void)gdb_check_watches();
 		gdb_watch_in_isr = 0;
 	}
 
