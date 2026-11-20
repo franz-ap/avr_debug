@@ -16,7 +16,7 @@ This is debugger for Arduino based on GNU Debugger (GDB). The debugger is implem
   + New functions `debug_watch()` / `debug_unwatch()` (macros `dbg_watch()` / `dbg_unwatch()`) to set watchpoints from the program.
   + New stand-alone mode (AVR8\_STANDALONE\_WATCH = 1) without GDB and without using the UART: watchpoint hits are recorded with a backtrace and can be queried with `debug_watch_get_hit()`.
   + New options AVR8\_MAX\_WATCHES, AVR8\_WATCH\_MAXLEN, AVR8\_LOCAL\_WATCH\_SUPPORT, AVR8\_STANDALONE\_WATCH and AVR8\_BACKTRACE\_DEPTH in avr8-stub.h.
-  + See [doc/watchpoints.md](doc/watchpoints.md) and the example examples/standalone_watch.
+  + See [doc/watchpoints.md](doc/watchpoints.md) and the [examples/standalone_watch/standalone_watch.ino](example) in examples/standalone_watch.
 
 **March 2022**
 + Added support for other UART than the default UART0 for Arduino Mega. (see AVR8_UART_NUMBER in avr8-stub.h).
@@ -40,7 +40,7 @@ breakpoints.
 
 **April 2021**
 (thanks to Bernhard Nebel, https://github.com/felias-fogg/avr_debug)
-+ Added code for ATMega1284(P). 
++ Added code for ATMega1284(P).
 
 
 **March 2021**
@@ -55,7 +55,7 @@ breakpoints.
 + Added support for PlatformIO based on contribution from msquirogac (https://github.com/msquirogac/avr-debugger-bootloader)
  This includes instructions in the doc to use the debugger in PlatformIO IDE (VSCode) and changes in the bootloader subfolder
  to support building the bootloader with PlatformIO.
- 
+
 **July 2019**
 + Created Arduino hardware configuration to make it possible to burn the bootloader from Arduino IDE.
 
