@@ -31,14 +31,15 @@
 // Tip: the backtrace is most readable with compiler optimization turned off
 // (-O0, see platform.local.txt in the library); with -Os small functions
 // are inlined and do not show up as separate entries.
-
+// Note: This demo will probably only work with real hardware,
+//       not on a simulator (it would not report the data modification there).
+//
 #include <string.h>
 #include <Arduino.h>
-//#include <avr8-stub.h>
-#include <avr_debugger.h>
+#include <avr8-stub.h>
 
 #if !defined(AVR8_STANDALONE_WATCH) || (! AVR8_STANDALONE_WATCH)
-  #warning Please set AVR8_STANDALONE_WATCH to 1 in your makefile or in the library file avr8-stub.h, if you want the full demonstration.
+  #warning Please set AVR8_STANDALONE_WATCH to 1 in your makefile or in the library file avr8-stub.h, if you want the stand-alone demonstration.
 #endif
 #if AVR8_STANDALONE_WATCH  &&  (! (AVR8_LOCAL_WATCH_SUPPORT >= 2))
   #error Please set AVR8_LOCAL_WATCH_SUPPORT to 2 in your makefile or in the library file avr8-stub.h. Required to run this demo in stand-alone debug mode.
@@ -68,6 +69,7 @@ const char* const names[] = { "Anna", "Bob", "Kimberly", "Max" };
 const uint8_t NAME_COUNT = sizeof(names) / sizeof(names[0]);
 
 
+
 // The buggy function: no length check.
 // noinline keeps it as a separate function so it shows up in the backtrace.
 __attribute__((noinline)) void setName (const char* newName)
@@ -79,13 +81,15 @@ __attribute__((noinline)) void setName (const char* newName)
 } // setName
 
 
+
 __attribute__((noinline)) void nextUser (uint8_t index)
 {
   char buf[50];
-  snprintf (buf, sizeof(buf), "demo %d: ", (int)index);
+  snprintf (buf, sizeof(buf), "demo %d, uptime: %ld s: ", (int)index, (long)(millis()/1000));
   INFO_MSG (buf);
   setName (names[index % NAME_COUNT]);
 } // nextUser
+
 
 
 // Print the data of a watchpoint hit
@@ -144,10 +148,11 @@ void setup (void)
   Serial.println (F("========================================"));
   Serial.println (F("Running in stand-alone debug mode."));
 # else
-  debug_message ("avr8-stub watchpoint example");
-# endif
-# ifndef __DEBUG__
-  Serial.println (F("Running in normal (non-debug) mode."));
+#   ifdef __DEBUG__
+      debug_message ("avr8-stub watchpoint example");
+#   else
+      Serial.println (F("Running in normal (non-debug) mode."));
+#   endif
 # endif
 
   pinMode (LED_BUILTIN, OUTPUT);
@@ -164,6 +169,7 @@ void setup (void)
 } // setup
 
 
+
 void loop (void)
 {
   static uint8_t    user = 0;
@@ -173,21 +179,21 @@ void loop (void)
 # if AVR8_STANDALONE_WATCH
   debug_watch_hit_t hit;
   uint8_t           count = debug_watch_get_hit (&hit);
-  if (count) {
-    printHit (count, hit);
+  if (count) {                // Data modification detected!
+    printHit (count, hit);    // Print details.
     settings.mode = 3;                 // Repair. Note: this write triggers the watchpoint ...
     (void)debug_watch_get_hit (NULL);  // ... so, discard that (expected) hit.
   }
 # endif
 
-# ifdef AVR8_STUB_DEBUG   // Extra output for advanced users who need to debug the debugger (gdb stub) itself.
-  extern uint8_t  G_Debug_INTxCount;  /* How many times external INTx ISR was called */
-  extern uint16_t G_LastPC;           /* Value of PC register in INTx ISR            */
+/*# ifdef AVR8_STUB_DEBUG   // Extra output for advanced users who need to debug the debugger (gdb stub) itself.
+  extern uint8_t  G_Debug_INTxCount;  // How many times external INTx ISR was called
+  extern uint16_t G_LastPC;           // Value of PC register in INTx ISR
   Serial.print (F("G_Debug_INTxCount=")); Serial.print (G_Debug_INTxCount); Serial.print (F("   G_LastPC=")); Serial.println (G_LastPC);
-# endif
+# endif */
 
-  // Interrupts (millis, delay, Serial) keep working while a watchpoint is
-  // active, but the program runs much slower than normal.
+  // Interrupts (millis, delay, Serial) keep working while a watchpoint is active,
+  // but the program runs much slower than normal.
   digitalWrite (LED_BUILTIN, !digitalRead(LED_BUILTIN));
   delay (500);
 } // loop

@@ -96,6 +96,14 @@ the pin output remains on LOW level until the next reset.
 If something drives the pin HIGH, disconnect it while debugging or select
 the other pin with `AVR8_SWINT_SOURCE`.
 
+**Note:**
+avr_debug will probably only work with real hardware.
+During some tests it did <u>not</u> work with the simulator "simavr", at least not out of the box.
+Maybe it would work with some additional setup / configuration, e.g. for pin 2.
+But simavr has its own gdb mode anyway. So, you do not need avr_debug there.
+
+
+
 ## Configuration (avr8-stub.h)
 
 | Option | Default | Meaning |
