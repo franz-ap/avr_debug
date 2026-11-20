@@ -280,7 +280,7 @@ strcpy
 ```
 We see: strcpy modified the byte in question. "??:?" ... We do not know the source code file name of strcpy.
 
-Who called strcpy?
+Who called strcpy? Let's decode the backtrace.
 Here is the whole story:
 ```
 avr-addr2line -f -C -e standalone_debugdemo_af 0x1DD6 0xA20 0xA9A 0x4ADA 0x6674 0x41C0 0xCEA 0x44A8 0x16C2
